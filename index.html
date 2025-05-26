@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Drilling Agreement</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 15px;
+      max-width: 600px;
+      margin: auto;
+    }
+    input, textarea, canvas {
+      width: 100%;
+      margin-bottom: 15px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    canvas {
+      border: 1px solid #000;
+      touch-action: none;
+    }
+    button {
+      font-size: 16px;
+      padding: 10px;
+      width: 100%;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Drilling Agreement</h2>
+
+<label for="name">Full Name:</label>
+<input type="text" id="name" placeholder="Enter your full name">
+
+<label for="address">Project Address:</label>
+<input type="text" id="address" placeholder="Enter address">
+
+<label>Take or Upload a Photo:</label>
+<input type="file" id="photoInput" accept="image/*" capture="environment">
+
+<canvas id="photoCanvas" width="400" height="400"></canvas>
+<button onclick="clearCanvas()">Clear Drawing on Photo</button>
+
+<label>Signature (Draw Below):</label>
+<canvas id="signatureCanvas" width="400" height="150"></canvas>
+<button onclick="clearSignature()">Clear Signature</button>
+
+<button onclick="generatePDF()">Export to PDF</button>
+
+<script>
+  const photoInput = document.getElementById('photoInput');
+  const photoCanvas = document.getElementById('photoCanvas');
+  const photoCtx = photoCanvas.getContext('2d');
+  let drawingPhoto = false;
+
+  const signatureCanvas = document.getElementById('signatureCanvas');
+  const signatureCtx = signatureCanvas.getContext('2d');
+  let drawingSig = false;
+
+  // Load photo into canvas
+  photoInput.addEventListener('change', function () {
+    const file = photoInput.files[0];
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      const img = new Image();
+      img.onload = function () {
+        photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+        photoCtx.drawImage(img, 0, 0, photoCanvas.width, photoCanvas.height);
+      };
+      img.src = e.target.result;
+    };
+    if (file) reader.readAsDataURL(file);
+  });
+
+  function getPos(canvas, e) {
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches && e.touches.length > 0) {
+      return [e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top];
+    }
+    return [e.offsetX || e.clientX - rect.left, e.offsetY || e.clientY - rect.top];
+  }
+
+  function startDraw(canvas, ctx, flagSetter) {
+    return function(e) {
+      flagSetter(true);
+      const [x, y] = getPos(canvas, e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    };
+  }
+
+  function draw(canvas, ctx, flagChecker) {
+    return function(e) {
+      if (!flagChecker()) return;
+      e.preventDefault();
+      const [x, y] = getPos(canvas, e);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    };
+  }
+
+  function endDraw(ctx, flagSetter) {
+    return function() {
+      flagSetter(false);
+      ctx.closePath();
+    };
+  }
+
+  // Draw on photo canvas
+  photoCanvas.addEventListener("mousedown", startDraw(photoCanvas, photoCtx, val => drawingPhoto = val));
+  photoCanvas.addEventListener("mousemove", draw(photoCanvas, photoCtx, () => drawingPhoto));
+  photoCanvas.addEventListener("mouseup", endDraw(photoCtx, val => drawingPhoto = val));
+  photoCanvas.addEventListener("mouseleave", endDraw(photoCtx, val => drawingPhoto = val));
+
+  photoCanvas.addEventListener("touchstart", startDraw(photoCanvas, photoCtx, val => drawingPhoto = val));
+  photoCanvas.addEventListener("touchmove", draw(photoCanvas, photoCtx, () => drawingPhoto));
+  photoCanvas.addEventListener("touchend", endDraw(photoCtx, val => drawingPhoto = val));
+
+  function clearCanvas() {
+    photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+  }
+
+  // Signature drawing
+  signatureCanvas.addEventListener("mousedown", startDraw(signatureCanvas, signatureCtx, val => drawingSig = val));
+  signatureCanvas.addEventListener("mousemove", draw(signatureCanvas, signatureCtx, () => drawingSig));
+  signatureCanvas.addEventListener("mouseup", endDraw(signatureCtx, val => drawingSig = val));
+  signatureCanvas.addEventListener("mouseleave", endDraw(signatureCtx, val => drawingSig = val));
+
+  signatureCanvas.addEventListener("touchstart", startDraw(signatureCanvas, signatureCtx, val => drawingSig = val));
+  signatureCanvas.addEventListener("touchmove", draw(signatureCanvas, signatureCtx, () => drawingSig));
+  signatureCanvas.addEventListener("touchend", endDraw(signatureCtx, val => drawingSig = val));
+
+  function clearSignature() {
+    signatureCtx.clearRect(0, 0, signatureCanvas.width, signatureCanvas.height);
+  }
+
+  async function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    const name = document.getElementById('name').value || "[Name]";
+    const address = document.getElementById('address').value || "[Address]";
+    const timestamp = new Date().toLocaleString();
+    const photoData = photoCanvas.toDataURL('image/jpeg');
+    const sigData = signatureCanvas.toDataURL('image/png');
+
+    doc.setFontSize(12);
+    doc.text("Drilling Agreement", 20, 20);
+
+    const agreementText = `I, ${name}, residing at ${address}, hereby give permission to drill a hole at this address and accept responsibility for any consequences.`;
+    const lines = doc.splitTextToSize(agreementText, 170);
+    doc.text(lines, 20, 30);
+    doc.text(`Signed on: ${timestamp}`, 20, 40 + lines.length * 7);
+
+    const sigY = 50 + lines.length * 7;
+    doc.text("Signature:", 20, sigY);
+    doc.addImage(sigData, 'PNG', 20, sigY + 5, 80, 30);
+
+    const photoY = sigY + 45;
+    doc.text("Photo with Markups:", 20, photoY);
+    doc.addImage(photoData, 'JPEG', 20, photoY + 5, 160, 160);
+
+    doc.save("drilling_agreement.pdf");
+  }
+</script>
+
+</body>
+</html>
