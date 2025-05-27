@@ -67,12 +67,6 @@
       background-color: #254c99;
     }
 
-    img {
-      max-width: 100%;
-      margin-top: 10px;
-      border-radius: 6px;
-    }
-
     .agreement {
       margin-top: 20px;
       line-height: 1.5;
@@ -80,6 +74,26 @@
       padding: 10px;
       border-left: 5px solid #3366cc;
       border-radius: 6px;
+    }
+
+    #photoPreviewWrapper {
+      position: relative;
+      margin-top: 10px;
+    }
+
+    #photoPreview {
+      width: 100%;
+      display: none;
+      border-radius: 6px;
+    }
+
+    #photoCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      border-radius: 6px;
+      display: none;
+      touch-action: none;
     }
 
     .hidden {
@@ -92,7 +106,7 @@
     <h2>Drilling Agreement</h2>
 
     <label for="name">Customer Name</label>
-    <input type="text" id="name" placeholder="Enter full name"/>
+    <input type="text" id="name" placeholder="Enter customer name"/>
 
     <label for="address">Address</label>
     <input type="text" id="address" placeholder="Enter address"/>
@@ -107,95 +121,99 @@
 
     <label for="photo">Take a Photo</label>
     <input type="file" accept="image/*" capture="environment" id="photo" />
-    <img id="preview" class="hidden" />
 
+    <div id="photoPreviewWrapper">
+      <img id="photoPreview" />
+      <canvas id="photoCanvas"></canvas>
+    </div>
+
+    <button onclick="clearPhotoDrawing()">Clear Drawing on Photo</button>
     <button onclick="downloadPDF()">Download PDF</button>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script>
-    const canvas = document.getElementById("signaturePad");
-    const ctx = canvas.getContext("2d");
+    const signatureCanvas = document.getElementById("signaturePad");
+    const signatureCtx = signatureCanvas.getContext("2d");
+
+    const photoInput = document.getElementById("photo");
+    const photoPreview = document.getElementById("photoPreview");
+    const photoCanvas = document.getElementById("photoCanvas");
+    const photoCtx = photoCanvas.getContext("2d");
+
     let drawing = false;
 
-    canvas.addEventListener("mousedown", startDraw);
-    canvas.addEventListener("mouseup", endDraw);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("touchstart", startDraw);
-    canvas.addEventListener("touchend", endDraw);
-    canvas.addEventListener("touchmove", draw);
+    function setupCanvasDrawing(canvas, ctx) {
+      canvas.addEventListener("mousedown", e => { drawing = true; draw(e, ctx, canvas); });
+      canvas.addEventListener("mouseup", () => { drawing = false; ctx.beginPath(); });
+      canvas.addEventListener("mousemove", e => draw(e, ctx, canvas));
 
-    function getPosition(e) {
-      const rect = canvas.getBoundingClientRect();
-      if (e.touches) {
-        return {
-          x: e.touches[0].clientX - rect.left,
-          y: e.touches[0].clientY - rect.top
-        };
-      } else {
-        return {
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top
-        };
-      }
+      canvas.addEventListener("touchstart", e => { drawing = true; draw(e, ctx, canvas); });
+      canvas.addEventListener("touchend", () => { drawing = false; ctx.beginPath(); });
+      canvas.addEventListener("touchmove", e => draw(e, ctx, canvas));
     }
 
-    function startDraw(e) {
-      drawing = true;
-      draw(e);
-    }
-
-    function endDraw() {
-      drawing = false;
-      ctx.beginPath();
-    }
-
-    function draw(e) {
+    function draw(e, ctx, canvas) {
       if (!drawing) return;
       e.preventDefault();
-      const pos = getPosition(e);
+      const rect = canvas.getBoundingClientRect();
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
       ctx.lineWidth = 2;
       ctx.lineCap = "round";
       ctx.strokeStyle = "#000";
-      ctx.lineTo(pos.x, pos.y);
+      ctx.lineTo(x - rect.left, y - rect.top);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
+      ctx.moveTo(x - rect.left, y - rect.top);
     }
 
+    setupCanvasDrawing(signatureCanvas, signatureCtx);
+    setupCanvasDrawing(photoCanvas, photoCtx);
+
     function clearSignature() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      signatureCtx.clearRect(0, 0, signatureCanvas.width, signatureCanvas.height);
+    }
+
+    function clearPhotoDrawing() {
+      photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
     }
 
     document.getElementById("name").addEventListener("input", updateAgreement);
     document.getElementById("address").addEventListener("input", updateAgreement);
 
     function updateAgreement() {
-      document.getElementById("nameOutput").innerText =
-        document.getElementById("name").value || "[Customer Name]";
-      document.getElementById("addressOutput").innerText =
-        document.getElementById("address").value || "[Address]";
+      document.getElementById("nameOutput").innerText = document.getElementById("name").value || "[Customer Name]";
+      document.getElementById("addressOutput").innerText = document.getElementById("address").value || "[Address]";
     }
 
-    document.getElementById("photo").addEventListener("change", function (e) {
+    photoInput.addEventListener("change", function (e) {
       const file = e.target.files[0];
+      if (!file) return;
       const reader = new FileReader();
       reader.onload = function (event) {
-        const img = document.getElementById("preview");
-        img.src = event.target.result;
-        img.classList.remove("hidden");
+        photoPreview.src = event.target.result;
+        photoPreview.style.display = "block";
+
+        setTimeout(() => {
+          photoCanvas.width = photoPreview.offsetWidth;
+          photoCanvas.height = photoPreview.offsetHeight;
+          photoCanvas.style.width = photoPreview.offsetWidth + "px";
+          photoCanvas.style.height = photoPreview.offsetHeight + "px";
+          photoCanvas.style.display = "block";
+        }, 300);
       };
-      if (file) reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
     });
 
     async function downloadPDF() {
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF();
+
       const name = document.getElementById("name").value;
       const address = document.getElementById("address").value;
       const agreementText = document.getElementById("agreementText").innerText;
-      const signatureData = canvas.toDataURL("image/png");
-      const imageElement = document.getElementById("preview");
+      const signatureData = signatureCanvas.toDataURL("image/png");
 
       pdf.setFontSize(12);
       pdf.text("Customer Name: " + name, 10, 20);
@@ -204,12 +222,22 @@
       const splitText = pdf.splitTextToSize(agreementText, 180);
       pdf.text(splitText, 10, 55);
 
-      pdf.addImage(signatureData, "PNG", 10, 85, 180, 40);
+      pdf.addImage(signatureData, "PNG", 10, 80, 180, 40);
 
-      if (!imageElement.classList.contains("hidden")) {
-        const imageData = imageElement.src;
-        pdf.addPage();
-        pdf.addImage(imageData, "JPEG", 10, 10, 180, 160);
+      if (photoPreview.src) {
+        // Combine photo and drawing
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = photoPreview.naturalWidth;
+        tempCanvas.height = photoPreview.naturalHeight;
+        const tempCtx = tempCanvas.getContext("2d");
+
+        tempCtx.drawImage(photoPreview, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        const scale = tempCanvas.width / photoCanvas.width;
+        tempCtx.drawImage(photoCanvas, 0, 0, photoCanvas.width * scale, photoCanvas.height * scale);
+
+        const combinedImage = tempCanvas.toDataURL("image/jpeg", 0.85);
+        pdf.addImage(combinedImage, "JPEG", 10, 130, 180, 100);
       }
 
       pdf.save("drilling-agreement.pdf");
